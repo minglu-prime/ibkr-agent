@@ -1,0 +1,486 @@
+<title>理性交易台</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600;800&display=swap">
+<style>
+/* 布局：终端风格的交易台。顶部滚动行情，8 个席位由一条流动的数据总线串起来；下方是单据列表和交易大厅消息流。刻意只做深色一套。 */
+:root{
+  --bg:#05080d; --paper:rgba(10,18,28,.82); --ink:#d6f5ff; --muted:#6f8aa0; --line:#17324a;
+  --ticket:#ffb000; --ticket-ink:#1a1000;
+  --ok:#2bff9a; --ok-bg:rgba(43,255,154,.10); --bad:#ff3b5c; --bad-bg:rgba(255,59,92,.12); --hold:#ffb000; --hold-bg:rgba(255,176,0,.12); --skip:#4b6175;
+  --active:#00e5ff; --active-bg:rgba(0,229,255,.08);
+  --glow:0 0 12px rgba(0,229,255,.45);
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.tag{font-size:11px;letter-spacing:.06em;color:var(--hold);background:var(--hold-bg);padding:2px 8px;border-radius:999px;font-weight:500}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer}
+button:hover{border-color:var(--active)}
+button:focus-visible{outline:2px solid var(--active);outline-offset:2px}
+button.primary{background:var(--active);border-color:var(--active);color:var(--paper)}
+.fault{margin:0;border:1px solid var(--bad);background:var(--bad-bg);color:var(--bad);padding:8px 12px;border-radius:8px;font-size:13px;overflow-wrap:anywhere}
+.fault[hidden]{display:none}
+
+/* 交易台 */
+.desk{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;position:relative}
+.seat{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;grid-template-rows:auto auto 1fr;gap:6px;min-height:178px;transition:background .25s,border-color .25s;position:relative;min-width:0}
+.seat .who{display:flex;align-items:center;gap:8px;min-width:0}
+.seat svg{flex:none}
+.seat .name{font-weight:700;font-size:13px}
+.seat .role{font-size:11px;color:var(--muted)}
+.seat .lane{font-family:var(--mono);font-size:10px;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted);justify-self:start}
+.seat .lane.slow{color:var(--active);border-color:var(--active)}
+.seat .lane.fast{color:var(--ok);border-color:var(--ok)}
+.seat .lane.hard{color:var(--bad);border-color:var(--bad)}
+.bubble{font-size:12px;line-height:1.5;color:var(--muted);min-width:0;overflow-wrap:anywhere}
+.seat.active{border-color:var(--active);background:var(--active-bg)}
+.seat.active .bubble{color:var(--ink)}
+.seat.done-ok .stamp,.seat.done-bad .stamp,.seat.done-hold .stamp,.seat.done-skip .stamp{display:inline-block}
+.stamp{display:none;position:absolute;top:8px;right:8px;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
+.seat.done-ok .stamp{color:var(--ok);background:var(--ok-bg)}
+.seat.done-bad .stamp{color:var(--bad);background:var(--bad-bg)}
+.seat.done-hold .stamp{color:var(--hold);background:var(--hold-bg)}
+.seat.done-skip .stamp{color:var(--skip);background:transparent;border:1px dashed var(--skip)}
+.seat.done-skip{opacity:.55}
+.chip{position:absolute;bottom:8px;right:8px;background:var(--ticket);color:var(--ticket-ink);font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;transform:rotate(-4deg);box-shadow:0 2px 0 rgba(0,0,0,.15)}
+.seat.active .fig{animation:bob 1s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion: reduce){.seat.active .fig{animation:none}.seat{transition:none}}
+
+/* 下半部分 */
+.lower{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:18px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.panel h2{font-size:14px;margin:0 0 10px}
+.tickets{display:grid;gap:8px}
+.tk{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;text-align:left;width:100%;padding:10px}
+.tk.sel{border-color:var(--active);background:var(--active-bg)}
+.tk .no{font-family:var(--mono);font-size:11px;background:var(--ticket);color:var(--ticket-ink);padding:2px 6px;border-radius:4px}
+.tk .t1{font-weight:500;font-size:13px}
+.tk .t2{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.ok{color:var(--ok);background:var(--ok-bg)} .pill.bad{color:var(--bad);background:var(--bad-bg)} .pill.hold{color:var(--hold);background:var(--hold-bg)} .pill.wait{color:var(--muted);border:1px solid var(--line)}
+ol.log{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+ol.log li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;align-items:start}
+ol.log .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}
+ol.log .hd{font-size:12px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+ol.log .s{font-weight:700}
+ol.log .t{font-family:var(--mono);font-size:11px;color:var(--muted)}
+ol.log .msg{margin-top:4px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;min-width:0;overflow-wrap:anywhere}
+ol.log .m{font-family:var(--mono);font-size:11px;color:var(--muted);display:block;margin-top:3px}
+ol.log .gate{font-family:var(--mono);font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;margin-right:6px}
+ol.log li.pending{opacity:.45}
+.funnel{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px}
+.funnel .f{background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.funnel .f b{font-family:var(--mono);margin-left:4px}
+.funnel .arrow{color:var(--muted)}
+.foot{font-size:12px;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+@media (max-width:880px){.desk{grid-template-columns:repeat(2,minmax(0,1fr))}.lower{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:420px){.seat{min-height:0}}
+
+/* ===== 终端风格 ===== */
+body{font-family:var(--mono);position:relative;overflow-x:hidden}
+#rain{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.22}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+  background:repeating-linear-gradient(to bottom,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+.wrap{position:relative;z-index:2}
+h1{font-family:var(--mono);font-weight:800;letter-spacing:.02em;color:var(--active);text-shadow:var(--glow)}
+h1 .cursor{display:inline-block;width:.6em;height:1em;background:var(--active);vertical-align:-.12em;margin-left:4px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.sub{font-family:var(--sans)}
+.prompt{color:var(--ok)}
+.tag{background:var(--hold-bg);border:1px solid var(--hold);border-radius:4px;font-family:var(--mono)}
+button{background:transparent;border-color:var(--line);color:var(--ink);font-family:var(--mono);border-radius:4px}
+button:hover{border-color:var(--active);box-shadow:var(--glow)}
+button.primary{background:var(--active);color:#001218;border-color:var(--active)}
+.desk,.panel{background:var(--paper);border-color:var(--line);border-radius:6px;backdrop-filter:blur(2px)}
+.desk{padding-bottom:28px}
+.seat{border-radius:4px;background:rgba(0,0,0,.25)}
+.seat .name{font-family:var(--sans)}
+.seat .role,.bubble{font-family:var(--sans)}
+.seat.active{box-shadow:var(--glow),inset 0 0 18px rgba(0,229,255,.12)}
+.seat.done-bad{box-shadow:0 0 10px rgba(255,59,92,.35)}
+.seat.done-ok{border-color:rgba(43,255,154,.35)}
+.stamp{border-radius:3px;font-family:var(--mono);letter-spacing:.05em}
+.chip{box-shadow:0 0 10px rgba(255,176,0,.6)}
+.tk{border-radius:4px}
+.tk.sel{box-shadow:var(--glow)}
+.tk .t1{font-family:var(--sans)}
+.pill{border-radius:3px;font-family:var(--mono)}
+ol.log .msg{background:rgba(0,0,0,.3);border-radius:4px;font-family:var(--sans)}
+ol.log .av{color:#001218;box-shadow:0 0 8px currentColor}
+.funnel .f{border-radius:3px;background:var(--paper)}
+
+/* 滚动行情 */
+.ticker{overflow:hidden;border-block:1px solid var(--line);background:rgba(0,0,0,.5);white-space:nowrap;position:relative}
+.ticker .track{display:inline-flex;gap:28px;padding:6px 0;animation:scroll 40s linear infinite}
+.ticker .q{font-size:12px}
+.ticker .q b{color:var(--ink);margin-right:6px}
+.up{color:var(--ok)} .down{color:var(--bad)}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* 数据总线：席位下方一条流动的线 */
+.bus{position:absolute;left:16px;right:16px;bottom:10px;height:3px;border-radius:2px;
+  background:repeating-linear-gradient(90deg,var(--active) 0 14px,transparent 14px 28px);opacity:.55;animation:flow 1.2s linear infinite;background-size:28px 3px}
+@keyframes flow{from{background-position:0 0}to{background-position:28px 0}}
+.seat.active::before{content:"";position:absolute;inset:-1px;border:1px solid var(--active);border-radius:4px;animation:pulse 1.4s ease-out infinite;pointer-events:none}
+@keyframes pulse{from{opacity:.9;transform:scale(1)}to{opacity:0;transform:scale(1.06)}}
+
+/* 状态栏 */
+.status{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:11px;color:var(--muted)}
+.status b{color:var(--ink);font-weight:600}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);margin-right:6px;animation:blink 1.6s steps(1) infinite}
+
+/* 像素办公室 */
+.office{position:relative;aspect-ratio:16/7;border:1px solid var(--line);border-radius:6px;overflow:hidden;
+  background:linear-gradient(rgba(0,229,255,.05) 1px,transparent 1px) 0 0/26px 26px,
+             linear-gradient(90deg,rgba(0,229,255,.05) 1px,transparent 1px) 0 0/26px 26px,
+             radial-gradient(ellipse at 50% 40%,rgba(0,229,255,.08),transparent 70%),#070d15}
+.office.narrow{aspect-ratio:3/4}
+.office .dk{position:absolute;transform:translate(-50%,0);width:66px;height:22px;background:#1d2b3b;border:1px solid #2c4560;border-radius:2px;z-index:2}
+.office .dk .mon{position:absolute;left:50%;top:-12px;transform:translateX(-50%);width:20px;height:12px;background:#0b1622;border:1px solid var(--active);box-shadow:0 0 6px rgba(0,229,255,.5)}
+.office .dk .lbl{position:absolute;top:24px;left:50%;transform:translateX(-50%);font-family:var(--sans);font-size:10px;color:var(--muted);white-space:nowrap}
+.office .fx{position:absolute;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:2px;font-family:var(--sans);font-size:10px;color:var(--muted);z-index:1}
+.office .fx .ic{font-family:var(--mono);font-size:11px;color:var(--active);border:1px solid var(--line);background:#0b1622;padding:6px 8px;white-space:nowrap;box-shadow:0 0 10px rgba(0,229,255,.25)}
+.office .agent{position:absolute;transform:translate(-50%,-100%);transition:left .85s ease-in-out,top .85s ease-in-out;z-index:3}
+.office .agent svg{display:block;filter:drop-shadow(0 0 4px rgba(0,229,255,.35))}
+.office .agent.walking svg{animation:hop .3s steps(2) infinite}
+.office .agent.walking .lg.l{animation:legs .3s steps(2) infinite}
+.office .agent.walking .lg.r{animation:legs .3s steps(2) infinite reverse}
+@keyframes hop{50%{transform:translateY(-2px)}}
+@keyframes legs{50%{transform:translateY(-1px)}}
+.office .say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;width:max-content;max-width:150px;
+  background:#0b1622;border:1px solid var(--active);color:var(--ink);font-family:var(--sans);font-size:11px;line-height:1.35;padding:3px 7px;border-radius:3px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+.office .say.on{opacity:1}
+.office .folder{position:absolute;transform:translate(-50%,-50%);min-width:30px;height:14px;padding:0 3px;background:var(--ticket);color:var(--ticket-ink);font-family:var(--mono);font-size:9px;font-weight:800;line-height:14px;text-align:center;border-radius:2px;
+  transition:left .85s ease-in-out,top .85s ease-in-out;z-index:4;box-shadow:0 0 8px rgba(255,176,0,.7)}
+.office .folder[data-stamp="bad"]{background:var(--bad);color:#fff;box-shadow:0 0 10px rgba(255,59,92,.8)}
+.office .folder[data-stamp="hold"]{outline:2px dashed var(--hold)}
+
+@media (prefers-reduced-motion: reduce){
+  .office .agent,.office .folder{transition:none}
+  .office .agent.walking svg,.office .agent.walking .lg{animation:none}
+  .ticker .track,.bus,.seat.active::before,h1 .cursor,.dot{animation:none}
+  #rain{display:none}
+}
+</style>
+
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="wrap">
+  <div class="ticker" aria-label="行情（模拟数据）"><div class="track" id="track"></div></div>
+  <header>
+    <div>
+      <h1><span class="prompt">&gt;</span> RATIONAL_DESK<span class="cursor"></span></h1>
+      <p class="sub">理性交易台 <span class="tag">演示 · 模拟数据 · 非真实交易</span><br>每一笔订单走过 8 个席位，任何一个席位都可以叫停。慢思考每周一次，快思考每天一次，硬规则永远在最上层。</p>
+    </div>
+    <div class="controls">
+      <button id="play" class="primary" type="button">暂停</button>
+      <button id="step" type="button">下一步</button>
+      <button id="replay" type="button">重放这张单</button>
+    </div>
+  </header>
+
+  <p class="fault" id="fault" role="alert" hidden></p>
+
+  <div class="status">
+    <span><span class="dot"></span>模式 <b>PAPER / DRY RUN</b></span>
+    <span>场所 <b>OKX · IBKR</b></span>
+    <span>KILL SWITCH <b>未触发</b></span>
+    <span>回撤熔断 <b>35%</b></span>
+    <span>杠杆 <b>0×</b></span>
+    <span>时钟 <b id="clock">--:--:--</b> CET</span>
+  </div>
+
+  <section class="office" id="office" aria-label="像素办公室：演示每张单在席位之间的流转"></section>
+
+  <section class="desk" id="desk" aria-label="交易台席位"></section>
+
+  <section class="funnel" aria-label="本周漏斗">
+    <span class="f">本周候选<b>9</b></span><span class="arrow">→</span>
+    <span class="f">规则淘汰<b>3</b></span><span class="arrow">→</span>
+    <span class="f" style="color:var(--hold)">暂缓（税）<b>1</b></span><span class="arrow">→</span>
+    <span class="f" style="color:var(--bad)">风控否决<b>1</b></span><span class="arrow">→</span>
+    <span class="f" style="color:var(--bad)">快哨兵拒绝<b>1</b></span><span class="arrow">→</span>
+    <span class="f" style="color:var(--ok)">成交<b>3</b></span>
+    <span class="f">手续费合计<b>€0.21</b></span>
+  </section>
+
+  <div class="lower">
+    <section class="panel">
+      <h2>本周订单单据</h2>
+      <div class="tickets" id="tickets"></div>
+    </section>
+    <section class="panel">
+      <h2 id="logTitle">逐步记录</h2>
+      <ol class="log" id="log"></ol>
+    </section>
+  </div>
+  <p class="foot">演示页面：所有单据、价格和行情都是模拟数据，不代表真实交易或收益，也不是投资建议。正式版会读取 <span class="mono">data/journal.sqlite</span> 里每次运行的真实记录，生成同样的页面。</p>
+</div>
+
+<script>
+const SEATS = [
+  {id:"data",  name:"数据员", role:"取价格、持仓、财报/链上数据", lane:"代码", cls:"", color:"#5b7fa6"},
+  {id:"opus",  name:"研究员", role:"Opus 5.5 · 每周定边界", lane:"慢思考", cls:"slow", color:"#2f5fd0"},
+  {id:"rules", name:"规则官", role:"算买卖线、手续费、税", lane:"代码", cls:"", color:"#7a5bb0"},
+  {id:"risk",  name:"风控官", role:"kill switch、上限、回撤", lane:"硬规则", cls:"hard", color:"#c2413b"},
+  {id:"fast",  name:"快哨兵", role:"Haiku 5.5 · 开仓前把关", lane:"快思考", cls:"fast", color:"#1f8a5b"},
+  {id:"exec",  name:"交易员", role:"挂 maker 限价单、等成交", lane:"代码", cls:"", color:"#b07a1f"},
+  {id:"recon", name:"对账员", role:"核对交易所持仓", lane:"代码", cls:"", color:"#4d8b8b"},
+  {id:"book",  name:"记账员", role:"写日志、记持有期", lane:"代码", cls:"", color:"#6b7686"}
+];
+// 每一步：[状态, 简短结论, 细节]。状态 ok/bad/hold/skip
+const TICKETS = [
+  {no:"T-0412", venue:"OKX", title:"BTC/EUR 买入 €60", final:["ok","已成交"], steps:[
+    ["ok","BTC €61,240，占 48%","目标 60%，偏离 12pp；现金 €71"],
+    ["ok","区间 55%–65%，信心中","失效条件：一周内跌超 15%，或交易所出安全事件"],
+    ["ok","偏离 12pp > 再平衡带 10pp → 买入 €60","来回成本 0.16%，按 2 年摊薄 0.08%/年"],
+    ["ok","全部通过","单币 ≤70% · 无杠杆 · 回撤 9% < 35%"],
+    ["ok","门：通过","突发事件 否 0.94 · 流动性正常 是 0.97 · 追高 否 0.88 · 继续 是 0.93"],
+    ["ok","下单前重取价：€61,180，4 分 12 秒成交","比计划价低 0.10%，在 ±0.5% 价格带内；计划 15 分钟后过期；post-only，手续费 €0.05"],
+    ["ok","持仓一致","交易所 0.00098 BTC = 本地记录"],
+    ["ok","记入批次 #7","满一年免税日 2027-11-05"]
+  ]},
+  {no:"T-0413", venue:"IBKR", title:"KO 买入 $240", final:["bad","风控否决"], steps:[
+    ["ok","KO $63.10，FCF 收益率 4.1%","基线年化 6.9%"],
+    ["ok","调整 +1.0pp，信心高","失效条件：北美销量连续两季下滑"],
+    ["ok","超额 2.4% ≥ 买入线 2% → 买入 $240","手续费 $1，按 2 年摊薄 0.2%/年"],
+    ["bad","否决：必需消费占比将到 47%","行业上限 45%"],
+    ["skip","未到这一步",""],["skip","未到这一步",""],["skip","未到这一步",""],
+    ["ok","记录否决原因","下周重新评估"]
+  ]},
+  {no:"T-0414", venue:"OKX", title:"ETH/EUR 卖出 €40", final:["hold","暂缓"], steps:[
+    ["ok","ETH €2,910，占 47%","目标 40%，超配 7pp"],
+    ["ok","区间 35%–45%，信心中","失效条件：质押收益率跌破 2%"],
+    ["hold","暂缓：可卖批次持有 8 个月","预计要交税 €6，超配一周的预期损失约 €2"],
+    ["skip","未到这一步",""],["skip","卖出不经过 AI",""],["skip","未到这一步",""],["skip","未到这一步",""],
+    ["ok","记录暂缓原因","批次 #3 满一年日 2027-03-02"]
+  ]},
+  {no:"T-0415", venue:"OKX", title:"ETH/EUR 买入 €50", final:["bad","快哨兵拒绝"], steps:[
+    ["ok","ETH €2,705，15 分钟内跌 6%","占 41%"],
+    ["ok","沿用本周区间 35%–45%","失效条件：一周内跌超 15%（未触发）"],
+    ["ok","偏离不大，补到目标 → 买入 €50","来回成本 0.16%"],
+    ["ok","全部通过","回撤 12% < 35%"],
+    ["bad","门：被“突发事件”否决","突发事件 是 0.88（交易所公告暂停 ETH 提币）· 继续 否 0.81 → 暂停开新仓，叫醒研究员"],
+    ["skip","未到这一步",""],["skip","未到这一步",""],
+    ["ok","记录拒绝原因","已排队：研究员今晚重新评估 ETH"]
+  ]}
+];
+
+const $ = s => document.querySelector(s);
+const desk = $("#desk"), tickets = $("#tickets"), log = $("#log");
+const LABEL = {ok:"通过", bad:"叫停", hold:"暂缓", skip:"跳过"};
+
+function figure(color){
+  return `<svg class="fig" width="38" height="44" viewBox="0 0 38 44" aria-hidden="true">
+    <rect x="2" y="34" width="34" height="8" rx="2" fill="var(--line)"/>
+    <circle cx="19" cy="11" r="7" fill="${color}"/>
+    <rect x="9" y="19" width="20" height="16" rx="6" fill="${color}" opacity=".85"/>
+    <rect x="13" y="28" width="12" height="7" rx="1.5" fill="var(--paper)" stroke="${color}"/>
+  </svg>`;
+}
+desk.innerHTML = SEATS.map(s => `
+  <div class="seat" id="seat-${s.id}">
+    <span class="stamp"></span>
+    <div class="who">${figure(s.color)}<div><div class="name">${s.name}</div><div class="role">${s.role}</div></div></div>
+    <span class="lane ${s.cls}">${s.lane}</span>
+    <div class="bubble"></div>
+  </div>`).join("") + `<div class="bus" aria-hidden="true"></div>`;
+
+// 行情条：示例价格，每 2 秒随机抖动一点，只是演示效果
+const QUOTES = [["BTC/EUR",61240],["ETH/EUR",2905],["SOL/EUR",142.6],["KO",63.10],["AAPL",231.4],["MSFT",498.2],["JNJ",158.9],["V",312.7]];
+const track = $("#track");
+function drawTicker(){
+  const html = QUOTES.map(([s,p]) => { const ch = (Math.random()-.5)*1.6;
+    return `<span class="q"><b>${s}</b><span class="${ch>=0?"up":"down"}">${p.toLocaleString("de-DE",{maximumFractionDigits:2})} ${ch>=0?"▲":"▼"}${Math.abs(ch).toFixed(2)}%</span></span>`; }).join("");
+  track.innerHTML = html + html;
+}
+drawTicker(); setInterval(drawTicker, 4000);
+setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString("de-DE",{timeZone:"Europe/Berlin"}); }, 1000);
+
+// 背景：缓慢下落的字符流
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (!reduce){
+  const cv = $("#rain"), cx = cv.getContext("2d"), CH = "01アイウエオ₿Ξ€$▲▼".split("");
+  let cols = [], fs = 14;
+  const size = () => { cv.width = innerWidth; cv.height = innerHeight; cols = Array(Math.ceil(cv.width/fs)).fill(0).map(()=>Math.random()*cv.height/fs); };
+  size(); addEventListener("resize", size);
+  setInterval(() => {
+    cx.fillStyle = "rgba(5,8,13,.12)"; cx.fillRect(0,0,cv.width,cv.height);
+    cx.font = fs+"px JetBrains Mono, monospace";
+    cols.forEach((y,i) => { cx.fillStyle = Math.random()<.04 ? "#ffb000" : "#00e5ff";
+      cx.fillText(CH[Math.random()*CH.length|0], i*fs, y*fs);
+      cols[i] = y*fs > cv.height && Math.random() > .97 ? 0 : y + 1; });
+  }, 70);
+}
+
+let cur = 0, step = 0, playing = true, timer = null;
+
+function renderTickets(){
+  tickets.innerHTML = TICKETS.map((t,i) => {
+    const done = i < cur || (i === cur && step >= SEATS.length);
+    const [k,label] = done ? t.final : ["wait", i === cur ? "处理中" : "排队"];
+    return `<button type="button" class="tk ${i===cur?"sel":""}" data-i="${i}">
+      <span class="no">${t.no}</span>
+      <span><span class="t1">${t.title}</span><br><span class="t2">${t.venue}</span></span>
+      <span class="pill ${k}">${label}</span></button>`;
+  }).join("");
+}
+function renderDesk(){
+  const t = TICKETS[cur];
+  SEATS.forEach((s,i) => {
+    const el = $("#seat-"+s.id), [k,short] = t.steps[i];
+    el.className = "seat";
+    el.querySelector(".chip")?.remove();
+    const b = el.querySelector(".bubble"), st = el.querySelector(".stamp");
+    if (i < step){ el.classList.add("done-"+k); b.textContent = short; st.textContent = LABEL[k]; }
+    else if (i === step){ el.classList.add("active"); b.textContent = "正在处理 "+t.no+" …";
+      el.insertAdjacentHTML("beforeend", `<span class="chip">${t.no}</span>`); }
+    else { b.textContent = ""; }
+  });
+}
+function renderLog(){
+  const t = TICKETS[cur];
+  $("#logTitle").textContent = `交易大厅 · ${t.no} ${t.venue} ${t.title}`;
+  log.innerHTML = SEATS.map((s,i) => {
+    const [k,short,detail] = t.steps[i];
+    const time = `14:${String(2 + cur*7 + i).padStart(2,"0")}`;
+    const av = `<span class="av" style="background:${s.color}">${s.name[0]}</span>`;
+    if (i >= step) return `<li class="pending">${av}<div><div class="hd"><span class="s">${s.name}</span></div><div class="msg">等待上一个席位</div></div></li>`;
+    const color = {ok:"var(--ok)",bad:"var(--bad)",hold:"var(--hold)",skip:"var(--skip)"}[k];
+    const bg = {ok:"var(--ok-bg)",bad:"var(--bad-bg)",hold:"var(--hold-bg)",skip:"transparent"}[k];
+    return `<li>${av}<div><div class="hd"><span class="s">${s.name}</span><span class="t">${time}</span></div>
+      <div class="msg"><span class="gate" style="color:${color};background:${bg}">${LABEL[k]}</span>${short}${detail?`<span class="m">${detail}</span>`:""}</div></div></li>`;
+  }).join("");
+}
+function render(){ renderTickets(); renderDesk(); renderLog(); }
+// ===== 像素办公室：小人走动演示每一步 =====
+const office = $("#office");
+const ACC = ["cap","glasses","book","helmet","visor","headset","magnifier","pen"];
+function sprite(color, acc){
+  const P = [], px = (x,y,c) => P.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${c}"/>`);
+  const skin = "#f6d2ae", dark = "#16202b", hair = "#3a2a1e";
+  for (let x=3;x<9;x++) px(x,1,hair);
+  for (let x=2;x<10;x++) for (let y=2;y<7;y++) px(x,y,skin);
+  for (let y=2;y<4;y++){ px(2,y,hair); px(9,y,hair); }
+  px(4,4,dark); px(7,4,dark); px(5,6,"#d98a7a"); px(6,6,"#d98a7a");
+  for (let x=3;x<9;x++) for (let y=7;y<11;y++) px(x,y,color);
+  px(2,8,color); px(9,8,color); px(2,9,skin); px(9,9,skin);
+  if (acc==="cap"){ for(let x=2;x<10;x++) px(x,1,color); for(let x=8;x<11;x++) px(x,2,color); }
+  if (acc==="glasses"){ for(let x=3;x<9;x++) px(x,4,"#0b1320"); px(4,4,"#9fe8ff"); px(7,4,"#9fe8ff"); }
+  if (acc==="helmet"){ for(let x=2;x<10;x++){ px(x,1,"#ff3b5c"); px(x,2,"#ff3b5c"); } }
+  if (acc==="visor"){ for(let x=2;x<10;x++) px(x,4,"#2bff9a"); }
+  if (acc==="headset"){ for(let x=3;x<9;x++) px(x,0,dark); px(2,1,dark); px(9,1,dark); px(1,4,dark); px(10,4,dark); px(10,5,dark); }
+  if (acc==="book"){ for(let y=8;y<11;y++){ px(9,y,"#ffd36b"); px(10,y,"#ffd36b"); } }
+  if (acc==="magnifier"){ px(10,7,"#9fe8ff"); px(11,7,"#9fe8ff"); px(10,8,"#9fe8ff"); px(11,8,"#9fe8ff"); px(9,9,dark); }
+  if (acc==="pen"){ px(10,6,"#ffb000"); px(10,7,"#ffb000"); px(10,8,"#ffb000"); }
+  return `<svg viewBox="0 0 12 13" width="42" height="46" shape-rendering="crispEdges" aria-hidden="true">${P.join("")}
+    <rect class="lg l" x="4" y="11" width="1" height="2" fill="${dark}"/><rect class="lg r" x="7" y="11" width="1" height="2" fill="${dark}"/></svg>`;
+}
+office.innerHTML = `
+  <div class="fx" id="fx-wall"><span class="ic">▤▤</span>行情墙</div>
+  <div class="fx" id="fx-term"><span class="ic">⌁ OKX · IBKR</span>交易所终端</div>
+  <div class="fx" id="fx-cab"><span class="ic">▥▥</span>日志柜</div>
+  ${SEATS.map((s,i)=>`<div class="dk" id="dk-${i}"><span class="mon"></span><span class="lbl">${s.name}</span></div>`).join("")}
+  ${SEATS.map((s,i)=>`<div class="agent" id="ag-${i}"><span class="say"></span>${sprite(s.color, ACC[i])}</div>`).join("")}
+  <div class="folder" id="folder"></div>`;
+const folder = $("#folder");
+
+function layout(){
+  const narrow = office.clientWidth < 640;
+  office.classList.toggle("narrow", narrow);
+  return narrow
+    ? {desks:[[28,20],[72,20],[28,39],[72,39],[28,58],[72,58],[28,77],[72,77]], wall:[50,5], term:[20,94], cab:[80,94]}
+    : {desks:[[24,36],[40,36],[56,36],[72,36],[24,76],[40,76],[56,76],[72,76]], wall:[7,55], term:[91,36], cab:[91,76]};
+}
+const place = (el,[x,y]) => { el.style.left = x+"%"; el.style.top = y+"%"; };
+function placeStatic(){
+  const L = layout();
+  place($("#fx-wall"), L.wall); place($("#fx-term"), L.term); place($("#fx-cab"), L.cab);
+  L.desks.forEach((p,i) => place($("#dk-"+i), p));
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 切换单据、重放或窗口大小变化时 gen 会加一，正在播的那段动画就作废。用专门的类型抛出，
+// 这样 stepOnce 能把“作废”和代码真的出错分开：作废静默结束，出错要显示出来。
+class Cancelled extends Error {}
+let gen = 0;
+function home(i){ const [x,y] = layout().desks[i]; return [x, y+1]; }
+async function walk(i, target, carry, g){
+  const ag = $("#ag-"+i), [x,y] = target, to = [x, y+1];
+  ag.classList.add("walking"); place(ag, to);
+  if (carry){ folder.hidden = false; place(folder, [x, y-9]); }
+  await sleep(reduce ? 150 : 900); ag.classList.remove("walking");
+  if (g !== gen) throw new Cancelled();
+}
+async function say(i, text, ms, g){
+  const b = $("#ag-"+i+" .say"); b.textContent = text; b.classList.add("on");
+  await sleep(ms); b.classList.remove("on");
+  if (g !== gen) throw new Cancelled();
+}
+function nextSeat(t, i){ for (let j=i+1;j<SEATS.length;j++) if (t.steps[j][0] !== "skip") return j; return null; }
+function resetScene(){
+  gen++; placeStatic();
+  SEATS.forEach((s,i) => { const a = $("#ag-"+i); a.classList.remove("walking"); a.querySelector(".say").classList.remove("on"); place(a, home(i)); });
+  const t = TICKETS[cur]; let at = step; while (at < SEATS.length && t.steps[at][0] === "skip") at++;
+  const stampAt = t.steps.slice(0, step).find(s => s[0]==="bad"||s[0]==="hold");
+  folder.dataset.stamp = stampAt ? stampAt[0] : "";
+  folder.textContent = t.no.slice(2);
+  if (at >= SEATS.length){ folder.hidden = true; return; }
+  folder.hidden = false; const [x,y] = layout().desks[at]; place(folder, [x, y+4]);
+}
+const ERRAND = {0:["wall","取行情、持仓…"], 5:["term","挂 maker 限价单…"], 6:["term","核对交易所持仓…"]};
+async function act(i){
+  const g = gen, t = TICKETS[cur], [k, short] = t.steps[i];
+  if (k === "skip") return;
+  const L = layout(), h = layout().desks[i];
+  if (ERRAND[i]){ const [where, line] = ERRAND[i]; const p = L[where];
+    await walk(i, p, true, g); await say(i, line, 800, g); await walk(i, h, true, g); }
+  else if (i === 1 || i === 4){ await say(i, i===1 ? "Opus 慢慢想…" : "Haiku 快速判断…", 700, g); }
+  if (k === "bad" || k === "hold") folder.dataset.stamp = k;
+  await say(i, short, 1300, g);
+  if (i === 7){ await walk(7, L.cab, true, g); await say(7, "归档 "+t.no, 700, g); folder.hidden = true; await walk(7, h, false, g); return; }
+  const next = (k === "bad" || k === "hold") ? 7 : nextSeat(t, i);
+  if (next == null) return;
+  const [nx, ny] = L.desks[next];
+  await walk(i, L.desks[next], true, g); place(folder, [nx, ny+4]); await walk(i, h, false, g);
+}
+let busy = false;
+function showFault(e){
+  console.error("交易台动画出错", e);
+  playing = false; $("#play").textContent = "播放";
+  const f = $("#fault");
+  f.textContent = `动画出错，已暂停：${e && e.message ? e.message : String(e)}。刷新页面可以重新开始。`;
+  f.hidden = false;
+}
+async function stepOnce(){
+  if (busy) return; busy = true;
+  try {
+    if (step < SEATS.length){ const i = step; await act(i); step++; render(); }
+    else { cur = (cur + 1) % TICKETS.length; step = 0; render(); resetScene(); await sleep(500); }
+  } catch(e) {
+    if (!(e instanceof Cancelled)) showFault(e);  // 作废的动画直接结束；其他错误停下来显示，不吞掉
+  } finally {
+    busy = false;
+  }
+}
+(async function loop(){ for(;;){ if (playing) await stepOnce(); await sleep(playing ? 400 : 200); } })();
+addEventListener("resize", () => { if (!busy) resetScene(); });
+
+$("#play").onclick = () => { playing = !playing; $("#play").textContent = playing ? "暂停" : "播放"; };
+$("#step").onclick = () => { stepOnce(); };
+$("#replay").onclick = () => { step = 0; render(); resetScene(); };
+tickets.addEventListener("click", e => { const b = e.target.closest(".tk"); if(!b) return; cur = +b.dataset.i; step = 0; render(); resetScene(); });
+
+// 首屏：第一张单已经走到第 5 个席位，页面一打开就是工作中的样子
+step = 4; render(); resetScene();
+</script>
