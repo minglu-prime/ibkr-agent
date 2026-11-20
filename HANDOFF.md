@@ -5,15 +5,7 @@ Minglu 换 Claude 账号前写的。新账号的 Claude 从这里开始读，然
 ## 1. 先做这几件事
 
 1. **确认 GitHub 能访问本仓库。** 仓库现在是 `minglu-prime/ibkr-agent`（旧名 `Sam18069272581/ibkr-agent`，GitHub 会自动跳转）。新账号要在 claude.ai 里连上能访问这个仓库的 GitHub 账号，并把仓库加进项目。
-2. **读最新分支，不要读 `main`。** `main` 只有一个初始提交（只有 `.gitignore`）。所有代码都在三个叠起来、还没合并的草稿 PR 里：
-
-   | PR | 分支 | 内容 | 叠在 |
-   | --- | --- | --- | --- |
-   | #1 | `claude/scaffold-agent` | 美股 IBKR agent 骨架、模拟盘闭环、Windows 支持 | `main` |
-   | #2 | `claude/project-thread-hkch6v` | 币圈 OKX 现货、一年持有期、Opus 每周边界 + Haiku 快哨兵 | #1 |
-   | #3 | `claude/project-thread-ewswv6` | 防御性修复（OKX 手续费币种等），已合并 #2 的最新提交 | #2 |
-
-   最新、最完整的代码在 `claude/project-thread-ewswv6`（`dfb0167`）。建议 Minglu 按 #1 → #2 → #3 的顺序合并进 `main`，以后新账号直接从 `main` 开始。
+2. **代码都在 `main` 上。** 2026-11-20 已按 #1 → #2 → #3 → #4 的顺序把原来叠在一起的草稿 PR 全部合并进 `main`（合并前 lint 通过，121 个测试全过）。旧分支 `claude/scaffold-agent`、`claude/project-thread-hkch6v`、`claude/project-thread-ewswv6` 只是历史，不用再看。
 3. **把项目说明重新填上。** 新账号的项目说明（project instructions）是空的，把下面“质量规则”那段原样贴进去。
 4. **确认 Anthropic API key 还能用。** 本地 `.env` 里的 `ANTHROPIC_API_KEY` 是 Minglu 自己填的。如果它属于旧账号的组织，换账号后可能被停用，需要换一个新的 key（同样只填在 `.env` 里）。
 
@@ -45,7 +37,7 @@ Minglu 换 Claude 账号前写的。新账号的 Claude 从这里开始读，然
 ## 4. Minglu 的电脑（Windows 11，DESKTOP-3G27JBR）
 
 - 项目目录 `C:\Users\COLORFUL\ibkr-agent`，2026-11-05 新 clone 的，虚拟环境 `.venv`（Python 3.11.9）。
-- **本地落后于 GitHub。** 2026-11-19 检查：本地分支 `claude/project-thread-hkch6v` 停在 `7f2b4c0`，没有没推送的提交，也没有改过的代码文件。下次在那台电脑上跑之前先 `git fetch`，切到 `claude/project-thread-ewswv6`（或合并后的 `main`）。
+- **本地落后于 GitHub。** 2026-11-19 检查：本地分支 `claude/project-thread-hkch6v` 停在 `7f2b4c0`，没有没推送的提交，也没有改过的代码文件。下次在那台电脑上跑之前先 `git fetch`，再切到 `main` 并 `git pull`。
 - 只在本地、不在 GitHub 的文件（都在 `.gitignore` 里，换 Claude 账号不影响它们）：
   - `.env`：Minglu 自己填的密钥。**永远不要读取、打印或提交。**
   - `config\settings.yaml`：从模板复制，只开了 `crypto.enabled` 和 `crypto.paper_local`，没有 `crypto.ai` 段。
